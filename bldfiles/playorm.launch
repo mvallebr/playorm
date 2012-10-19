@@ -9,7 +9,11 @@
 <listEntry value="file=${project_loc}/output/jardist/nosqlorm.jar"/>
 <listEntry value="groupId=playorm"/>
 <listEntry value="artifactId=playorm"/>
+<<<<<<< HEAD
 <listEntry value="version=0.0.1"/>
+=======
+<listEntry value="version=0.0.1-SNAPSHOT"/>
+>>>>>>> branch 'master' of git@github.com:mvallebr/playorm.git
 <listEntry value="packaging=jar"/>
 </listAttribute>
 <stringAttribute key="M2_RUNTIME" value="EMBEDDED"/>
