@@ -3,7 +3,9 @@ package com.alvazan.orm.impl.meta.scan;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
+import java.util.Calendar;
 import java.util.Collection;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import com.alvazan.orm.api.base.CursorToMany;
 import com.alvazan.orm.api.base.ToOneProvider;
 import com.alvazan.orm.api.base.anno.NoSqlColumn;
+import com.alvazan.orm.api.base.anno.NoSqlConverter;
 import com.alvazan.orm.api.base.anno.NoSqlDiscriminatorColumn;
 import com.alvazan.orm.api.base.anno.NoSqlEmbeddable;
 import com.alvazan.orm.api.base.anno.NoSqlEmbedded;
@@ -42,11 +45,12 @@ import com.alvazan.orm.impl.meta.data.MetaClassInheritance;
 import com.alvazan.orm.impl.meta.data.MetaClassSingle;
 import com.alvazan.orm.impl.meta.data.MetaCommonField;
 import com.alvazan.orm.impl.meta.data.MetaCursorField;
-import com.alvazan.orm.impl.meta.data.MetaEmbeddedField;
+import com.alvazan.orm.impl.meta.data.MetaEmbeddedEntity;
+import com.alvazan.orm.impl.meta.data.MetaEmbeddedSimple;
 import com.alvazan.orm.impl.meta.data.MetaField;
 import com.alvazan.orm.impl.meta.data.MetaIdField;
 import com.alvazan.orm.impl.meta.data.MetaInfo;
-import com.alvazan.orm.impl.meta.data.MetaListField;
+import com.alvazan.orm.impl.meta.data.MetaToManyField;
 import com.alvazan.orm.impl.meta.data.MetaProxyField;
 
 @SuppressWarnings("rawtypes")
@@ -60,9 +64,11 @@ public class ScannerForField {
 	@Inject
 	private Provider<MetaCommonField> metaProvider;
 	@Inject
-	private Provider<MetaListField> metaListProvider;
+	private Provider<MetaToManyField> metaListProvider;
 	@Inject
-	private Provider<MetaEmbeddedField> metaEmbeddedProvider;
+	private Provider<MetaEmbeddedEntity> metaEmbeddedProvider;
+	@Inject
+	private Provider<MetaEmbeddedSimple> metaEmbeddedSimpleProvider;
 	@Inject
 	private Provider<MetaCursorField> metaCursorProvider;
 	@Inject
@@ -104,25 +110,31 @@ public class ScannerForField {
 		if(field.isAnnotationPresent(NoSqlPartitionByThisField.class))
 			throw new IllegalArgumentException("Field="+field+" is a primary key so it cannot have annotation="+NoSqlPartitionByThisField.class.getName());
 		
-		try {
-			converter = lookupConverter(type, converter);
-			IdInfo info = new IdInfo();
-			info.setIdMethod(idMethod);
-			info.setConverter(converter);
-			info.setGen(gen);
-			info.setUseGenerator(idAnno.usegenerator());
-			info.setMetaClass(metaClass);
-			metaField.setup(t, info, field, columnName, isIndexed);
-			return metaField;
-		} catch(IllegalArgumentException e)	{
-			throw new IllegalArgumentException("No converter found for field='"+field.getName()+"' in class="
-					+field.getDeclaringClass()+".  You need to either add on of the @*ToOne annotations, @Embedded, " +
-							"or add your own converter calling EntityMgrFactory.setup(Map<Class, Converter>) which " +
-							"will then work for all fields of that type OR add @Column(customConverter=YourConverter.class)" +
-							" or @NoSqlId(customConverter=YourConverter.class) " +
-							" or finally if we missed a standard converter, we need to add it in file "+getClass()+
-							" in the constructor and it is trivial code(and we can copy the existing pattern)");
-		}		 
+		converter = lookupConverter(field, type, converter);
+		if(converter == null)
+			throw throwInvalidConverter(field);
+		IdInfo info = new IdInfo();
+		info.setIdMethod(idMethod);
+		info.setConverter(converter);
+		info.setGen(gen);
+		info.setUseGenerator(idAnno.usegenerator());
+		info.setMetaClass(metaClass);
+		metaField.setup(t, info, field, columnName, isIndexed);
+		return metaField;
+	}
+
+	private IllegalArgumentException throwInvalidConverter(Field field) {
+		Class type = field.getType();
+		if(Date.class.equals(type) || Calendar.class.equals(type))
+			return new IllegalArgumentException("See this url for what you did wrong: https://github.com/deanhiller/playorm/wiki/Date-and-Calendar-Support");
+		
+		//TODO: create url with information on this one..
+		return new IllegalArgumentException("No converter found for field='"+field.getName()+"' in class="
+				+field.getDeclaringClass()+".  You need to either add one of the @*ToOne annotations, @Embedded, @Transient " +
+						"or add your own converter calling EntityMgrFactory.setup(Map<Class, Converter>) which " +
+						"will then work for all fields of that type OR add @Column(customConverter=YourConverter.class)" +
+						" or finally if we missed a standard converter, we need to add it in file InspectorField.java" +
+						" in the constructor and it is trivial code(and we can copy the existing pattern)");
 	}
 
 	private Method getIdMethod(Field field) {
@@ -171,29 +183,26 @@ public class ScannerForField {
 		if(col != null && !NoConversion.class.isAssignableFrom(col.customConverter()))
 			converter = ReflectionUtil.create(col.customConverter());
 
-		try {
-			converter = lookupConverter(type, converter);
-			metaField.setup(t, field, colName, converter, isIndexed, isPartitioned);
-			return metaField;			
-		} catch(IllegalArgumentException e)	{
-			throw new IllegalArgumentException("No converter found for field='"+field.getName()+"' in class="
-					+field.getDeclaringClass()+".  You need to either add one of the @*ToOne annotations, @Embedded, @Transient " +
-							"or add your own converter calling EntityMgrFactory.setup(Map<Class, Converter>) which " +
-							"will then work for all fields of that type OR add @Column(customConverter=YourConverter.class)" +
-							" or finally if we missed a standard converter, we need to add it in file InspectorField.java" +
-							" in the constructor and it is trivial code(and we can copy the existing pattern)");
-		}
+		converter = lookupConverter(field, type, converter);
+		if(converter == null)
+			throw throwInvalidConverter(field);
+		metaField.setup(t, field, colName, converter, isIndexed, isPartitioned);
+		return metaField;			
 	}
 	
-	private Converter lookupConverter(Class<?> type, Converter custom) {
-		if(custom != null) {
+	private Converter lookupConverter(Field field, Class<?> type, Converter custom) {
+		NoSqlConverter customConv = field.getAnnotation(NoSqlConverter.class);
+		if(customConv != null) {
+			Class<? extends Converter> convClazz = customConv.converter();
+			return ReflectionUtil.create(convClazz);
+		} else if(custom != null) {
 			return custom;
 		} else if(customConverters.get(type) != null) {
 			return customConverters.get(type);
 		} else if(StandardConverters.get(type) != null){
 			return StandardConverters.get(type);
 		}
-		throw new IllegalArgumentException("bug, caller should catch this and log info about field or id converter, etc. etc");
+		return null;
 	}
 
 	public void setCustomConverters(Map<Class, Converter> converters) {
@@ -287,34 +296,44 @@ public class ScannerForField {
 				&& !field.getType().equals(Set.class) && !field.getType().equals(Collection.class))
 			throw new RuntimeException("field="+field+" must be Set, Collection, List or Map since it is annotated with OneToMany");
 
-		MetaListField metaField = metaListProvider.get();
+		MetaToManyField metaField = metaListProvider.get();
 		metaField.setup(t, field, colName,  fkMeta, fieldForKey);
 		
 		return metaField;
 	}
 
+	@SuppressWarnings("unchecked")
 	public MetaField processEmbedded(DboTableMeta t, Field field) {
 		NoSqlEmbedded embedded = field.getAnnotation(NoSqlEmbedded.class);
-		Class<?> entityType = field.getType();
-		if(entityType.equals(List.class)) {
+		Class<?> type = field.getType();
+		if(type.equals(List.class)) {
 			ParameterizedType genType = (ParameterizedType) field.getGenericType();
-			entityType = (Class<?>) genType.getActualTypeArguments()[0];
+			type = (Class<?>) genType.getActualTypeArguments()[0];
 		}
 		
-		if(!entityType.isAnnotationPresent(NoSqlEmbeddable.class))
-			throw new IllegalArgumentException("Entity type="+entityType.getName()+" is missing annotation NoSqlEmbeddable" +
-					" because field refers to it as being embedded. field="+field);
-
 		String colNameOrig = embedded.columnNamePrefix();
 		String colName = field.getName();
 		if(!"".equals(colNameOrig))
 			colName = colNameOrig;
 		
-		MetaAbstractClass<?> fkMeta = metaInfo.findOrCreate(entityType);
+		MetaField metaField;
+		if(type.isAnnotationPresent(NoSqlEmbeddable.class)) {
+			MetaAbstractClass<?> fkMeta = metaInfo.findOrCreate(type);
+			MetaEmbeddedEntity temp = metaEmbeddedProvider.get();
+			temp.setup(t, field, colName, fkMeta);
+			metaField = temp;
+		} else {
+			Converter converter = lookupConverter(field, type, null);
+			if(converter == null)
+				throw new IllegalArgumentException("We found no converters(customer or standard for type="
+						+type.getSimpleName()+" and this class is not annotated with " +
+								"@NoSqlEmbeddable either.  The field that caused this issue is field="+field);
+			
+			MetaEmbeddedSimple meta = metaEmbeddedSimpleProvider.get();
+			meta.setup(t, field, colName, converter, type);
+			metaField = meta;
+		}
 		
-		MetaEmbeddedField metaField = metaEmbeddedProvider.get();
-		metaField.setup(t, field, colName, fkMeta);
-
 		return metaField;
 	}
 	
