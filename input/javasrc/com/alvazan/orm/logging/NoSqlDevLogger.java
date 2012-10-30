@@ -64,8 +64,8 @@ public class NoSqlDevLogger implements NoSqlSession {
 
 	@Override
 	public AbstractCursor<KeyValue<Row>> find(DboTableMeta cf,
-			Iterable<byte[]> noSqlKeys, boolean skipCache, Integer batchSize) {
-		return session.find(cf, noSqlKeys, skipCache, batchSize);
+			Iterable<byte[]> noSqlKeys, boolean skipCache, boolean cacheResults, Integer batchSize) {
+		return session.find(cf, noSqlKeys, skipCache, cacheResults, batchSize);
 	}
 	
 	@Override
@@ -104,6 +104,10 @@ public class NoSqlDevLogger implements NoSqlSession {
 	@Override
 	public AbstractCursor<IndexColumn> scanIndex(ScanInfo scanInfo, List<byte[]> values) {
 		return session.scanIndex(scanInfo, values);
+	}
+
+	@Override
+	public void clear() {
 	}
 
 }

@@ -10,8 +10,8 @@ import com.alvazan.orm.api.z8spi.KeyValue;
 import com.alvazan.orm.api.z8spi.Row;
 import com.alvazan.orm.api.z8spi.action.IndexColumn;
 import com.alvazan.orm.api.z8spi.iter.AbstractCursor;
-import com.alvazan.orm.api.z8spi.iter.IterToVirtual;
 import com.alvazan.orm.api.z8spi.iter.AbstractCursor.Holder;
+import com.alvazan.orm.api.z8spi.iter.IterToVirtual;
 import com.alvazan.orm.api.z8spi.meta.DboTableMeta;
 import com.alvazan.orm.impl.meta.data.MetaAbstractClass;
 import com.alvazan.orm.impl.meta.data.Tuple;
@@ -104,7 +104,7 @@ public class CursorProxy<T> implements CursorToMany<T> {
 		
 		DboTableMeta metaDbo = proxyMeta.getMetaDbo();
 		Iterable<byte[]> virtKeys = new IterToVirtual(metaDbo, keyList);
-		AbstractCursor<KeyValue<Row>> rows = session.find(metaDbo, virtKeys, true, batchSize);
+		AbstractCursor<KeyValue<Row>> rows = session.find(metaDbo, virtKeys, true, true, batchSize);
 		
 		int counter = 0;
 		while(true) {

@@ -5,7 +5,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,11 +14,11 @@ import play.data.binding.ParamNode;
 import play.data.binding.RootParamNode;
 
 import com.alvazan.orm.api.base.Bootstrap;
-import com.alvazan.orm.api.base.DbTypeEnum;
 import com.alvazan.orm.api.base.MetaLayer;
 import com.alvazan.orm.api.base.NoSqlEntityManager;
 import com.alvazan.orm.api.base.NoSqlEntityManagerFactory;
 import com.alvazan.orm.api.base.anno.NoSqlEntity;
+import com.alvazan.orm.api.exc.RowNotFoundException;
 
 public class NoSqlPlugin extends PlayPlugin {
 
@@ -46,7 +45,8 @@ public class NoSqlPlugin extends PlayPlugin {
         
         //Read the entity in so that this entity is used instead...
     	Object o = em.find(clazz, theId);
-    	
+    	if(o == null)
+    		throw new RowNotFoundException("Row with rowkey="+theId+" was not found, but your page posted this id to lookup the row of class type="+clazz.getSimpleName());
     	return NoSqlModel.edit(rootParamNode, name, o, annotations);
     }
 
@@ -70,36 +70,23 @@ public class NoSqlPlugin extends PlayPlugin {
         if (classes.isEmpty())
             return;
 
-        String prop = Play.configuration.getProperty("nosql.db");
-        if(StringUtils.isEmpty(prop)) 
-        	throw new IllegalArgumentException("nosql.db property must be defined");
-
-		DbTypeEnum type = DbTypeEnum.IN_MEMORY;
-		if("cassandra".equalsIgnoreCase(prop)) {
-			String clusterName = Play.configuration.getProperty("nosql.cassandra.clustername");
-			String keyspace = Play.configuration.getProperty("nosql.cassandra.keyspace");
-			String seeds = Play.configuration.getProperty("nosql.cassandra.seeds");
-			if(clusterName == null)
-				throw new IllegalArgumentException("property nosql.cassandra.clustername is required if using cassandra");
-			else if(keyspace == null)
-				throw new IllegalArgumentException("property nosql.cassandra.keyspace is required if using cassandra");
-			else if(seeds == null)
-				throw new IllegalArgumentException("property nosql.cassandra.seeds is required if using cassandra");
-			type = DbTypeEnum.CASSANDRA;
-		}
-		
         Map<String, Object> props = new HashMap<String, Object>();
         props.put(Bootstrap.LIST_OF_EXTRA_CLASSES_TO_SCAN_KEY, classes);
         props.put(Bootstrap.AUTO_CREATE_KEY, "create");
         
+        for(java.util.Map.Entry<Object, Object> entry : Play.configuration.entrySet()) {
+        	props.put((String) entry.getKey(), entry.getValue());
+        }
+        
         log.info("Initializing PlayORM...");
 
-        NoSqlEntityManagerFactory factory = Bootstrap.create(type, props, null, Play.classloader);
+        NoSqlEntityManagerFactory factory = Bootstrap.create(props, Play.classloader);
         NoSql.setEntityManagerFactory(factory);
 	}
 
 	@Override
 	public void onApplicationStop() {
+		log.info("stopping PlayOrm");
 		if(NoSql.getEntityManagerFactory() == null)
 			return;
 		
@@ -114,5 +101,20 @@ public class NoSqlPlugin extends PlayPlugin {
 
         NoSqlEntityManager manager = NoSql.getEntityManagerFactory().createEntityManager();
         NoSql.createContext(manager);
+    }
+    
+    @Override
+    public void afterInvocation() {
+    	NoSql.clearContext();
+    }
+
+    @Override
+    public void onInvocationException(Throwable e) {
+    	NoSql.clearContext();
+    }
+
+    @Override
+    public void invocationFinally() {
+    	NoSql.clearContext();
     }
 }

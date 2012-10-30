@@ -51,12 +51,14 @@ public interface NoSqlSession {
 	 */
 	public void remove(DboTableMeta colFamily, byte[] rowKey, Collection<byte[]> columnNames);
 	
-	public AbstractCursor<KeyValue<Row>> find(DboTableMeta colFamily, Iterable<byte[]> rowKeys, boolean skipCache, Integer batchSize);
+	public AbstractCursor<KeyValue<Row>> find(DboTableMeta colFamily, Iterable<byte[]> rowKeys, boolean skipReadCache, boolean cacheResults, Integer batchSize);
 	
 	public Row find(DboTableMeta colFamily, byte[] rowKey);
 	
 	public void flush();
 
+	public void clear();
+	
 	public void clearDb();
 
 	/**
