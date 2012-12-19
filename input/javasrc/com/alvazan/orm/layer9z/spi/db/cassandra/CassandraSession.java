@@ -32,8 +32,10 @@ import com.netflix.astyanax.Cluster;
 import com.netflix.astyanax.ColumnListMutation;
 import com.netflix.astyanax.Keyspace;
 import com.netflix.astyanax.MutationBatch;
+import com.netflix.astyanax.connectionpool.OperationResult;
 import com.netflix.astyanax.connectionpool.exceptions.ConnectionException;
 import com.netflix.astyanax.ddl.KeyspaceDefinition;
+import com.netflix.astyanax.ddl.SchemaChangeResult;
 import com.netflix.astyanax.model.ByteBufferRange;
 import com.netflix.astyanax.model.ColumnFamily;
 import com.netflix.astyanax.query.ColumnFamilyQuery;
@@ -81,7 +83,7 @@ public class CassandraSession implements NoSqlRawSession {
 		}
 		
 		Keyspace keyspace = columnFamilies.getKeyspace();
-		CursorKeysToRows cursor = new CursorKeysToRows(rowKeys, batchSize, list, rowProvider);
+		CursorKeysToRows2 cursor = new CursorKeysToRows2(rowKeys, batchSize, list, rowProvider);
 		cursor.setupMore(keyspace, colFamily, info, cache);
 		return cursor;
 	}
@@ -249,9 +251,9 @@ public class CassandraSession implements NoSqlRawSession {
 		}
 		
 		cluster.dropKeyspace(keyspaceName);
-		String id = cluster.addKeyspace(ourDef);
+		OperationResult<SchemaChangeResult> result = cluster.addKeyspace(ourDef);
 		
-		columnFamilies.waitForNodesToBeUpToDate(id, 300000);
+		columnFamilies.waitForNodesToBeUpToDate(result, 300000);
 	}
 
 
@@ -280,7 +282,7 @@ public class CassandraSession implements NoSqlRawSession {
 		};
 			
 
-		return findBasic(Column.class, rowKey, l, batchListener, batchSize);
+		return findBasic(Column.class, rowKey, l, batchListener, batchSize, "general column slice");
 	}
 
 	@Override
@@ -322,7 +324,7 @@ public class CassandraSession implements NoSqlRawSession {
 				type == ColumnType.COMPOSITE_DECIMALPREFIX ||
 				type == ColumnType.COMPOSITE_STRINGPREFIX) {
 			Listener l = new Listener(rowKey, info1, from, to, batchSize);
-			return findBasic(IndexColumn.class, rowKey, l, bListener, batchSize);
+			return findBasic(IndexColumn.class, rowKey, l, bListener, batchSize, ""+info);
 		} else
 			throw new UnsupportedOperationException("not done here yet");
 	}
@@ -357,9 +359,9 @@ public class CassandraSession implements NoSqlRawSession {
 		return rowQuery;
 	}
 
-	private <T> AbstractCursor<T> findBasic(Class<T> clazz, byte[] rowKey, CreateColumnSliceCallback l, BatchListener bListener, Integer batchSize) {
+	private <T> AbstractCursor<T> findBasic(Class<T> clazz, byte[] rowKey, CreateColumnSliceCallback l, BatchListener bListener, Integer batchSize, String logInfo) {
 		boolean isComposite = IndexColumn.class == clazz;
-		return new CursorColumnSlice<T>(l, isComposite, bListener, batchSize);
+		return new CursorColumnSlice<T>(l, isComposite, bListener, batchSize, logInfo);
 	}
 	
 	public interface CreateColumnSliceCallback {
