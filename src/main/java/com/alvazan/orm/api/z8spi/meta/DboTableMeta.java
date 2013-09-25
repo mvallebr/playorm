@@ -1,6 +1,9 @@
 package com.alvazan.orm.api.z8spi.meta;
 
 import java.lang.reflect.Method;
+import java.net.URL;
+import java.security.CodeSource;
+import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -11,6 +14,7 @@ import java.util.regex.Pattern;
 import javassist.util.proxy.MethodFilter;
 import javassist.util.proxy.Proxy;
 import javassist.util.proxy.ProxyFactory;
+import javassist.util.proxy.ProxyObject;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -119,7 +123,20 @@ public class DboTableMeta {
 	private static Proxy testInstanceCreation(Class<?> clazz) {
 		try {
 			//Object obj = clazz.newInstance();
-			Proxy inst = (Proxy) clazz.newInstance();
+			Class<?>[] interfaces = clazz.getInterfaces();
+			for(Class c : interfaces) {
+				log.info("interface X="+c.getSimpleName());
+				if("ProxyObject".equals(c.getSimpleName())) {
+					CodeSource src = c.getProtectionDomain().getCodeSource();
+					URL location = src.getLocation();
+					log.info("proxy 1 is located at="+location);
+				}
+			}
+			ProtectionDomain pd = Proxy.class.getProtectionDomain();
+			CodeSource cs = pd.getCodeSource();
+			URL location = cs.getLocation();
+			log.info("proxy 2 is located at="+location);
+			ProxyObject inst = (ProxyObject) clazz.newInstance();
 			return inst;
 		} catch (InstantiationException e) {
 			throw new RuntimeException("Could not create proxy for type="+clazz, e);

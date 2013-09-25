@@ -5,6 +5,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 import javassist.util.proxy.Proxy;
+import javassist.util.proxy.ProxyObject;
 
 import com.alvazan.orm.api.base.spi.KeyGenerator;
 import com.alvazan.orm.api.z5api.NoSqlSession;
@@ -142,7 +143,7 @@ public class MetaIdField<OWNER> extends MetaAbstractField<OWNER> {
 	@SuppressWarnings("unchecked")
 	private OWNER createProxy(Object entityId, NoSqlSession session, CacheLoadCallback cacheLoadCallback, Class<?> clazz) {
 		Class<?> subclassProxyClass = metaClass.getProxyClass(clazz);
-		Proxy inst = (Proxy) ReflectionUtil.create(subclassProxyClass);
+		ProxyObject inst = (ProxyObject) ReflectionUtil.create(subclassProxyClass);
 		inst.setHandler(new NoSqlProxyImpl<OWNER>(session, metaClass, entityId, cacheLoadCallback));
 		return (OWNER) inst;
 	}

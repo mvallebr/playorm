@@ -3,6 +3,9 @@ package com.alvazan.orm.impl.meta.scan;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.net.URL;
+import java.security.CodeSource;
+import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -10,6 +13,7 @@ import java.util.List;
 import javassist.util.proxy.MethodFilter;
 import javassist.util.proxy.Proxy;
 import javassist.util.proxy.ProxyFactory;
+import javassist.util.proxy.ProxyObject;
 
 import javax.inject.Inject;
 
@@ -157,12 +161,26 @@ public class ScannerForClass {
 	/**
 	 * An early test so we get errors on startup instead of waiting until runtime(a.k.a fail as fast as we can)
 	 */
-	private Proxy testInstanceCreation(Class<?> clazz) {
+	private static Proxy testInstanceCreation(Class<?> clazz) {
 		try {
-			Proxy inst = (Proxy) clazz.newInstance();
+			//Object obj = clazz.newInstance();
+			Class<?>[] interfaces = clazz.getInterfaces();
+			for(Class c : interfaces) {
+				log.info("interface X="+c.getSimpleName());
+				if("ProxyObject".equals(c.getSimpleName())) {
+					CodeSource src = c.getProtectionDomain().getCodeSource();
+					URL location = src.getLocation();
+					log.info("proxy 1 is located at="+location);
+				}
+			}
+			ProtectionDomain pd = Proxy.class.getProtectionDomain();
+			CodeSource cs = pd.getCodeSource();
+			URL location = cs.getLocation();
+			log.info("proxy 2 is located at="+location);
+			ProxyObject inst = (ProxyObject) clazz.newInstance();
 			return inst;
 		} catch (InstantiationException e) {
-			throw new RuntimeException("ARE YOU missing a default constructor on this class.  We Could not create proxy for type="+clazz, e);
+			throw new RuntimeException("Could not create proxy for type="+clazz, e);
 		} catch (IllegalAccessException e) {
 			throw new RuntimeException("Could not create proxy for type="+clazz, e);
 		}
