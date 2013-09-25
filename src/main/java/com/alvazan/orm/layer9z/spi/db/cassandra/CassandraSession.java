@@ -38,6 +38,7 @@ import com.netflix.astyanax.Keyspace;
 import com.netflix.astyanax.MutationBatch;
 import com.netflix.astyanax.connectionpool.OperationResult;
 import com.netflix.astyanax.connectionpool.exceptions.ConnectionException;
+import com.netflix.astyanax.connectionpool.exceptions.TokenRangeOfflineException;
 import com.netflix.astyanax.ddl.KeyspaceDefinition;
 import com.netflix.astyanax.ddl.SchemaChangeResult;
 import com.netflix.astyanax.model.ByteBufferRange;
@@ -137,7 +138,12 @@ public class CassandraSession implements NoSqlRawSession {
 		}
 		
 		long time = System.currentTimeMillis();
-		m.execute();
+        try {
+            m.execute();
+        } catch (TokenRangeOfflineException e) {
+            throw new RuntimeException(
+                    "It appears your CL_LEVEL is CL_QUOROM and there are not enough nodes on line to service that request.  Either lower your CL_LEVEL or make sure all nodes are operational");
+        }
 		
 		if(log.isTraceEnabled()) {
 			long total = System.currentTimeMillis()-time;
@@ -307,7 +313,14 @@ public class CassandraSession implements NoSqlRawSession {
 
 			@Override
 			public RowQuery<byte[], byte[]> createRowQueryReverse() {
-				RangeBuilder rangeBldr = new RangeBuilder().setStart(to).setEnd(from).setReversed(true);
+				RangeBuilder rangeBldr = new RangeBuilder();
+				if(to != null)
+					rangeBldr.setStart(to);
+				if(from != null)
+					rangeBldr.setEnd(from);
+					
+				rangeBldr.setReversed(true);
+				
 				if(batchSize != null)
 					rangeBldr = rangeBldr.setLimit(batchSize);
 				ByteBufferRange range = rangeBldr.build(); 
@@ -353,7 +366,21 @@ public class CassandraSession implements NoSqlRawSession {
 			throw new IllegalArgumentException("batch size must be supplied and be greater than 0");
 		String colFamily = info.getIndexColFamily();
 		byte[] rowKey = info.getRowKey();
-		Info info1 = columnFamilies.fetchColumnFamilyInfo(colFamily, mgr);
+
+		//Here we don't bother using an index at all since there is no where clause to begin with
+        //ALSO, we don't want this code to be the case if we are doing a CursorToMany which has to use an index
+        //so check the column type
+        if(!info.getEntityColFamily().isVirtualCf() && from == null && to == null
+                && !(info.getColumnName() instanceof DboColumnToManyMeta)
+                && !info.getEntityColFamily().isInheritance()) {
+            Keyspace keyspace = columnFamilies.getKeyspace();
+            Info cfInfo = columnFamilies.lookupOrCreate2(info.getEntityColFamily().getRealColumnFamily(), mgr);
+            ScanCassandraCf scanner = new ScanCassandraCf(info, cfInfo, bListener, batchSize, keyspace);
+            scanner.beforeFirst();
+            return scanner;
+        }
+
+        Info info1 = columnFamilies.fetchColumnFamilyInfo(colFamily, mgr);
 		if(info1 == null) {
 			//well, if column family doesn't exist, then no entities exist either
 			if (log.isInfoEnabled())
@@ -361,18 +388,7 @@ public class CassandraSession implements NoSqlRawSession {
 			return new EmptyCursor<IndexColumn>();
 		}
 		
-		//Here we don't bother using an index at all since there is no where clause to begin with
-		//ALSO, we don't want this code to be the case if we are doing a CursorToMany which has to use an index
-		//so check the column type
-		if(!info.getEntityColFamily().isVirtualCf() && from == null && to == null 
-				&& !(info.getColumnName() instanceof DboColumnToManyMeta)
-				&& !info.getEntityColFamily().isInheritance()) {
-			Keyspace keyspace = columnFamilies.getKeyspace();
-			Info cfInfo = columnFamilies.lookupOrCreate2(info.getEntityColFamily().getRealColumnFamily(), mgr);
-			ScanCassandraCf scanner = new ScanCassandraCf(info, cfInfo, bListener, batchSize, keyspace);
-			scanner.beforeFirst();
-			return scanner;
-		}
+
 		
 		String colName = null;
 		if(info.getColumnName() != null)

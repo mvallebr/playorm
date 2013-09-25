@@ -19,6 +19,7 @@ import javassist.util.proxy.ProxyObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.alvazan.orm.api.base.anno.NoSqlEmbedded;
 import com.alvazan.orm.api.base.anno.NoSqlEntity;
 import com.alvazan.orm.api.base.anno.NoSqlId;
 import com.alvazan.orm.api.base.anno.NoSqlIndexed;
@@ -71,6 +72,13 @@ public class DboTableMeta {
 	private DboColumnTTLMeta ttlColumn;
 
 	private String foreignKeyToExtensions;
+
+	/** 
+	 * Specifically not for playorm but for clients of playorm that want to add meta data
+	 * to the DboTableMeta object
+	 */
+	@NoSqlEmbedded
+	private Map<String, String> extensions = new HashMap<String, String>();
 
 	private transient List<DboColumnMeta> indexedColumnsCache;
 	private transient List<DboColumnMeta> cacheOfPartitionedBy;
@@ -519,5 +527,8 @@ public class DboTableMeta {
 	public void setTimeSeriesPartionSize(Long timeSeriesPartionSize) {
 		this.timeSeriesPartionSize = timeSeriesPartionSize;
 	}
-
+	
+	public Map<String, String> getExtensions() {
+		return extensions;
+	}
 }
